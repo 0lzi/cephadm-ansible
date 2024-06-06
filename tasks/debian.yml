@@ -1,0 +1,103 @@
+- name: enable repo from download.ceph.com
+  block:
+    - name: prevent ceph certificate error
+      apt:
+        name: ca-certificates
+        state: latest
+        update_cache: true
+      register: result
+      until: result is succeeded
+
+    - name: configure ceph community repository stable key
+      apt_key:
+        url: "{{ ceph_stable_key }}"
+        state: present
+
+    - name: configure Ceph community repository
+      when: ceph_origin == 'community'
+      apt_repository:
+        repo: "deb https://download.ceph.com/debian-{{ ceph_release }}/ {{ ansible_facts['distribution_release'] }} main"
+        state: present
+        filename: ceph
+        update_cache: false
+
+    - name: configure Ceph testing repository
+      when: ceph_origin == 'testing'
+      apt_repository:
+        repo: "deb https://download.ceph.com/debian-testing/ {{ ansible_facts['distribution_release'] }} main"
+        state: present
+        filename: ceph
+        update_cache: false
+
+    - name: configure Ceph custom repositories
+      when: ceph_origin == 'custom'
+      apt_repository:
+        repo: "deb {{ item.baseurl }}/ {{ ansible_facts['distribution_release'] }} {{ item.components }}"
+        state: "{{ item.state | default(omit) }}"
+        filename: ceph_custom
+        update_cache: false
+      loop: "{{ ceph_custom_repositories }}"
+
+- name: install prerequisites packages
+  apt:
+    name: "{{ ['python3','chrony'] + ceph_pkgs }}"
+    state: "{{ (upgrade_ceph_packages | bool) | ternary('latest', 'present') }}"
+    update_cache: true
+  register: result
+  until: result is succeeded
+
+- name: ensure chronyd is running
+  service:
+    name: chronyd
+    state: started
+    enabled: true
+
+- name: install container engine
+  block:
+    - name: install podman
+      when: ansible_facts['distribution_version'] is version('11', '>=')
+      apt:
+        name: podman
+        state: present
+        update_cache: true
+      register: result
+      until: result is succeeded
+
+    - name: install docker
+      when: ansible_facts['distribution_version'] is version('10', '<')
+      block:
+        - name: uninstall old version packages
+          apt:
+            name: "{{ item }}"
+            state: absent
+          loop:
+            - docker
+            - docker-engine
+            - docker.io
+            - containerd
+            - runc
+
+        - name: configure docker repository key
+          apt_key:
+            url: "https://download.docker.com/linux/debian/gpg"
+            state: present
+
+        - name: setup docker repository
+          apt_repository:
+            repo: "deb https://download.docker.com/linux/debian {{ ansible_facts['distribution_release'] }} stable"
+            state: present
+            filename: docker
+            update_cache: false
+
+        - name: install docker
+          apt:
+            name: "{{ item }}"
+            state: present
+            update_cache: true
+          register: result
+          until: result is succeeded
+          loop:
+            - docker-ce
+            - docker-ce-cli
+            - containerd.io
+
