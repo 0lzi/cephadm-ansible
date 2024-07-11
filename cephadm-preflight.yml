@@ -46,15 +46,7 @@
         name: ceph_defaults
 
     - name: Import specific OS-related tasks
-      include_tasks: "{{ lookup('first_found', __OS_distribution) }}"
-      vars:
-        __OS_distribution:
-          files:
-            - "tasks/{{ ansible_facts['distribution'] }}.yml"
-          paths:
-            - "{{ playbook_dir }}"
-          skip: true
-
+      include_tasks: "tasks/{{ ansible_facts['distribution'] }}.yml"
 
 - name: set insecure container registry in /etc/containers/registries.conf
   ansible.builtin.import_playbook: cephadm-set-container-insecure-registries.yml
